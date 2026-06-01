@@ -22,7 +22,7 @@ Antes de processar qualquer reunião, aplique os filtros abaixo. Reuniões fora 
 | Reunião **recorrente** (`recurrence != null`) onde o usuário **não é organizador** | Dailys, Standups de outros times |
 | Qualquer reunião dos times **B2B2C** ou **Evolução e Regulatório** dos tipos: Daily, Review, Refinamento, Alinhamento Técnico, Planning | [DAILY] B2B2C, [DAILY] Evolução e Regulatório, [Alinhamento Técnico] Evolução... |
 
-Organizadores típicos dessas reuniões ignoradas: `henrique.oliveira@thunders.com.br`, `DEVEvoluoThunders2@thunders.com.br`.
+Os organizadores típicos dessas reuniões ignoradas podem ser configurados em `skill_config.json` (campo `ignored_organizers`).
 
 ### Processar
 
@@ -75,13 +75,13 @@ Pergunte ao usuário o caminho do arquivo de transcrição exportado manualmente
 **VTT (Modo B):** leia o arquivo com a ferramenta Read. Formato:
 ```
 00:01:23.000 --> 00:01:28.000
-<v Sidney Silva>Precisamos definir o fluxo de aprovação.</v>
+<v João Silva>Precisamos definir o fluxo de aprovação.</v>
 ```
 Extraia nomes dos speakers das tags `<v Nome>` ou do padrão `Nome: texto`.
 
 **DOCX (Modo B):** execute:
 ```powershell
-python "C:\Users\sidne\.claude\skills\resumo-reunioes-teams\scripts\parse_transcript.py" "<caminho_arquivo>"
+python "$env:USERPROFILE\.claude\skills\resumo-reunioes-teams\scripts\parse_transcript.py" "<caminho_arquivo>"
 ```
 Retorna JSON com texto estruturado.
 
@@ -98,7 +98,25 @@ Para um novo time, a pasta será criada automaticamente no OneDrive durante o up
 
 ### 4. Gerar o resumo (sua principal responsabilidade)
 
-Analise profundamente o texto e preencha o JSON abaixo. Seja criterioso — vá além das palavras literais, capture a intenção real do que foi dito.
+Leia o conteúdo da transcrição e **entenda o teor da reunião antes de estruturar qualquer coisa**. Não aplique formato fixo — escolha as seções que fazem sentido para o que foi discutido.
+
+#### Como identificar o teor
+
+Pergunte-se: *"O que as pessoas estavam tentando resolver ou decidir nessa reunião?"*
+
+| Teor | O que buscar | Seções naturais |
+|---|---|---|
+| **Diagnóstico** | debate sobre o que funciona/não funciona, saúde do processo | O que funciona, O que não funciona, Encaminhamentos |
+| **Operacional** | tarefas, prazos, bloqueios, quem faz o quê | Combinados, Impedimentos, Próximos Passos |
+| **Estratégico** | direção, prioridades, posicionamento, decisões de produto | Contexto, Decisões, Implicações, Próximos Passos |
+| **Alinhamento** | dúvidas resolvidas, acordos entre times ou pessoas | Pontos Alinhados, Decisões, Combinados |
+| **Review / Demo** | apresentação de entregas, feedback, aceite | O que foi entregue, Feedbacks, Pendências de aceite |
+| **Planning** | histórias, estimativas, capacidade, metas de sprint | Meta, Histórias comprometidas, Riscos, Capacidade |
+| **Workshop / Levantamento** | regras de negócio, fluxos, requisitos | Regras de Negócio, Fluxos, Dúvidas em aberto |
+
+Se a reunião mistura dois teores, priorize o que gerou mais discussão.
+
+#### JSON de saída (estrutura inteligente)
 
 ```json
 {
@@ -106,41 +124,62 @@ Analise profundamente o texto e preencha o JSON abaixo. Seja criterioso — vá 
   "data": "YYYY-MM-DD",
   "time": "...",
   "participantes": ["Nome1", "Nome2"],
-  "regras_negocio": ["..."],
-  "combinados": [{"item": "...", "responsavel": "...", "prazo": "..."}],
-  "proximos_passos": [{"acao": "...", "responsavel": "...", "prazo": "..."}],
-  "decisoes": ["..."],
-  "riscos": [{"item": "...", "impacto": "Alto|Médio|Baixo"}],
-  "pendencias": [{"item": "...", "responsavel": "...", "prazo": "..."}]
+  "tipo_reuniao": "diagnóstico|operacional|estratégico|alinhamento|review|planning|workshop",
+  "contexto": "1-2 frases: por que essa reunião aconteceu e qual era o objetivo central",
+  "secoes": [
+    {
+      "titulo": "Título relevante ao conteúdo",
+      "itens": [
+        "item como texto simples",
+        {"texto": "item com contexto", "detalhe": "explicação ou nuance"},
+        {"acao": "o que fazer", "responsavel": "quem", "prazo": "quando"}
+      ]
+    }
+  ],
+  "acoes_pendentes": [
+    {"item": "...", "responsavel": "...", "prazo": "..."}
+  ]
 }
 ```
 
-Se um campo não tiver conteúdo, use lista vazia `[]`.
+**Regras:**
+- `secoes` é livre — crie os títulos que melhor descrevem o que foi discutido
+- Use `{"texto", "detalhe"}` quando um item precisa de contexto para ser compreendido
+- Use `{"acao", "responsavel", "prazo"}` para compromissos e próximos passos
+- `acoes_pendentes` é obrigatório e sempre preenchido — é o que alimenta o rastreamento semanal. Se não há prazo, use `"A definir"`
+- Se um campo não se aplica, omita — não force seções vazias
+
+#### Boas práticas para fácil consulta
+
+- **Título de seção** = o que o leitor vai procurar, não o que o facilitador usou ("Bloqueios do Sprint" é melhor que "Riscos")
+- **Itens curtos** — a ideia principal em uma frase; use `detalhe` para contexto extra
+- **Capture intenção**, não transcrição — "Time vai pausar novas features até resolver o débito técnico" é melhor que "Fulano disse que precisa parar de fazer feature"
 
 ---
 
 ### 5. Criar o arquivo .docx
 
-Use a ferramenta Write para criar o JSON em `C:\Users\sidne\AppData\Local\Temp\resumo_reuniao.json`. Em seguida:
+Use a ferramenta Write para criar o JSON em `$env:TEMP\resumo_reuniao.json`. Em seguida:
 
 ```powershell
-cd "C:\Users\sidne\.claude\skills\resumo-reunioes-teams"
-python scripts/create_docx.py --file "C:\Users\sidne\AppData\Local\Temp\resumo_reuniao.json" --output "C:\Users\sidne\AppData\Local\Temp\resumo_reuniao.docx"
+cd "$env:USERPROFILE\.claude\skills\resumo-reunioes-teams"
+python scripts/create_docx_smart.py --file "$env:TEMP\resumo_reuniao.json" --output "$env:TEMP\resumo_reuniao.docx"
 ```
 
 O script retorna `{"success": true, "path": "...", "filename": "..."}`.
 
 Antes de fazer upload, renomeie o arquivo com o padrão correto:
 ```powershell
-Rename-Item "C:\Users\sidne\AppData\Local\Temp\resumo_reuniao.docx" "YYYY-MM-DD_titulo_time.docx"
+Rename-Item "$env:TEMP\resumo_reuniao.docx" "YYYY-MM-DD_titulo_time.docx"
 ```
 
 ---
 
-### 6. Fazer upload para o OneDrive
+### 7. Fazer upload para o OneDrive
 
 ```powershell
-python scripts/onedrive_upload.py "C:\Users\sidne\AppData\Local\Temp\YYYY-MM-DD_titulo_time.docx" --team "<nome_do_time>"
+cd "$env:USERPROFILE\.claude\skills\resumo-reunioes-teams"
+python scripts/onedrive_upload.py "$env:TEMP\YYYY-MM-DD_titulo_time.docx" --team "<nome_do_time>"
 ```
 
 O token de autenticação fica em cache após a primeira execução — nas próximas vezes o upload é silencioso.
@@ -152,7 +191,7 @@ O script cuida de:
 
 ---
 
-### 7. Confirmar ao usuário
+### 8. Confirmar ao usuário
 
 Informe:
 - Nome do arquivo salvo
@@ -161,6 +200,68 @@ Informe:
 
 Pergunte: *"Quer consultar alguma informação desta reunião ou de reuniões anteriores?"*
 Se sim → acione a skill `reunioes-consulta`.
+
+---
+
+## Relatório semanal por email
+
+O relatório é um **estudo da semana** — não apenas uma lista de itens, mas uma análise dos temas recorrentes e do que não avançou entre as reuniões.
+
+### Fluxo completo
+
+**Passo 1 — Verificar configuração:**
+
+Leia `skill_config.json` na raiz da skill. Se o arquivo não existir ou estiver incompleto, pergunte ao usuário:
+- Email corporativo (usado no envio via Outlook): `work_email`
+- Email pessoal para rascunho (Gmail draft): `personal_draft_email`
+- Nome do time no Teams: `teams_team`
+- Nome do canal no Teams: `teams_channel`
+
+Salve as respostas em `skill_config.json` (não commitado no git).
+
+**Passo 2 — Coletar dados brutos das reuniões da semana:**
+```powershell
+cd "$env:USERPROFILE\.claude\skills\resumo-reunioes-teams"
+python scripts/weekly_consolidate.py --json-output "$env:TEMP\reunioes_semana.json"
+```
+
+**Passo 3 — Analisar e escrever o HTML do relatório (sua responsabilidade):**
+
+Leia o JSON gerado. Para cada reunião, você terá `tipo_reuniao`, `contexto`, `secoes` e `acoes_pendentes`.
+
+Escreva o HTML do relatório com as seguintes seções:
+
+1. **Estudo da Semana** — 3-5 parágrafos analisando os temas que atravessaram as reuniões. Identifique padrões: o que o time está tentando resolver? Quais tensões apareceram em mais de uma reunião? O que ainda não tem resposta?
+
+2. **Pontos que não avançaram** — itens de `acoes_pendentes` que aparecem em mais de uma reunião, ou que eram pendência de semanas anteriores (compare títulos e responsáveis). Destaque o tempo que estão em aberto.
+
+3. **Combinados e Próximos Passos** — todos os `acoes_pendentes` da semana, agrupados por responsável, com prazo.
+
+4. **Reuniões da semana** — lista com título, time, data e `contexto` de cada reunião processada.
+
+Salve o HTML em `$env:TEMP\relatorio_semanal.html` usando a ferramenta Write.
+
+**Passo 4 — Enviar via Outlook:**
+```powershell
+cd "$env:USERPROFILE\.claude\skills\resumo-reunioes-teams"
+python scripts/send_report.py --email "<work_email>" --teams-team "<teams_team>" --teams-channel "<teams_channel>" --report-file "$env:TEMP\relatorio_semanal.html"
+```
+*(substitua os valores pelo que está em `skill_config.json`)*
+
+**Passo 5 — Criar rascunho no Gmail:**
+
+Use `mcp__claude_ai_Gmail__create_draft` com:
+- `to`: `["<personal_draft_email>"]`
+- `subject`: `"Relatório Semanal de Reuniões — DD/MM/YYYY"`
+- `body`: conteúdo HTML do relatório
+
+Confirme ao usuário os destinatários usados.
+
+### Notas
+
+- `send_report.py` envia via Graph API (Outlook) — aceita qualquer destinatário no parâmetro `--email`
+- O rascunho Gmail fica disponível para revisão e reencaminhamento antes de enviar
+- Para alterar destinatários sem reconfigurar tudo, edite `skill_config.json` diretamente
 
 ---
 
@@ -186,9 +287,11 @@ Sinais: "ainda não temos resposta de", "precisa de aprovação", "estamos esper
 
 ---
 
-## Template do documento final
+## Templates dos documentos finais
 
-O `create_docx.py` usa este template automaticamente. Para referência:
+### Formato A — Padrão (`create_docx.py`)
+
+Para referência:
 
 ```
 RESUMO DE REUNIÃO
@@ -234,6 +337,40 @@ PENDÊNCIAS
 
 • [pendência] — Responsável: [nome] | Prazo: [prazo]
 (se vazio: "Nenhuma pendência registrada.")
+
+═══════════════════════════════════════════════
+Resumo gerado em: [data e hora atual]
+```
+
+---
+
+### Formato B — Diagnóstico (`create_docx_diagnostico.py`)
+
+```
+RESUMO DE REUNIÃO
+═══════════════════════════════════════════════
+
+Título:        [titulo]
+Data:          [data formatada em pt-BR]
+Time:          [time]
+Participantes: [Nome1, Nome2, Nome3]
+
+───────────────────────────────────────────────
+O QUE FUNCIONA
+
+• [titulo]
+  [detalhe]
+
+───────────────────────────────────────────────
+O QUE NÃO FUNCIONA
+
+• [titulo]
+  [detalhe]
+
+───────────────────────────────────────────────
+ENCAMINHAMENTOS                    (omitir seção se vazio)
+
+• [item] — Responsável: [nome] | Prazo: [prazo]
 
 ═══════════════════════════════════════════════
 Resumo gerado em: [data e hora atual]

@@ -2,5 +2,17 @@
   "work_email": "seu.email@empresa.com.br",
   "personal_draft_email": "seu.email.pessoal@outlook.com",
   "teams_team": "Nome do Time no Teams",
-  "teams_channel": "Nome do Canal"
+  "teams_channel": "Nome do Canal",
+  "filters": {
+    "mode": "custom",
+    "ignore_title_contains": [],
+    "ignore_recurring_not_organizer": true,
+    "ignore_team_patterns": [
+      {
+        "_comment": "Exemplo: ignorar dailys e reviews de um time específico",
+        "team_keywords": ["Nome do Time"],
+        "meeting_types": ["DAILY", "Review", "Refinamento", "Planning", "Alinhamento"]
+      }
+    ]
+  }
 }

@@ -9,34 +9,62 @@ Processa transcrições do Teams e gera resumo estruturado salvo no OneDrive.
 
 ---
 
-## Critérios de filtragem de reuniões
+## Configuração de filtros
 
-Antes de processar qualquer reunião, aplique os filtros abaixo. Reuniões fora do critério são ignoradas silenciosamente.
+Os filtros determinam quais reuniões do calendário serão processadas. São definidos pelo usuário na primeira execução e salvos em `skill_config.json`.
 
-### Ignorar sempre
+### Primeira execução (sem config ou sem a chave `filters`)
 
-| Condição | Exemplos |
-|---|---|
-| Título contém `[Refinamento]` | [Refinamento] Projetos Sprint #36 |
-| Título contém `Diálogo de Inovação` | Diálogo de Inovação |
-| Reunião **recorrente** (`recurrence != null`) onde o usuário **não é organizador** | Dailys, Standups de outros times |
-| Qualquer reunião dos times **B2B2C** ou **Evolução e Regulatório** dos tipos: Daily, Review, Refinamento, Alinhamento Técnico, Planning | [DAILY] B2B2C, [DAILY] Evolução e Regulatório, [Alinhamento Técnico] Evolução... |
+Pergunte ao usuário:
 
-Os organizadores típicos dessas reuniões ignoradas podem ser configurados em `skill_config.json` (campo `ignored_organizers`).
+> "Como você quer filtrar as reuniões para resumo?"
+> 1. **Processar tudo** — todas as reuniões com transcrição disponível
+> 2. **Configurar filtros** — escolher padrões a ignorar
 
-### Processar
+**Se escolher "Processar tudo":** salve `"filters": { "mode": "all" }` e siga em frente.
 
-- Reuniões onde `isOrganizer: true` (o usuário criou a reunião)
-- Reuniões não recorrentes com participação ativa, independente do time (avaliações, workshops, demos, alinhamentos pontuais)
-- Reuniões do time B2B ou Projetos que o usuário organizou
+**Se escolher "Configurar filtros":** faça as três perguntas abaixo, salve em `skill_config.json` e use nos processamentos seguintes.
 
-### Como identificar na prática
+---
 
-Ao varrer o calendário, para cada evento:
-1. Título tem `[Refinamento]` ou `Diálogo de Inovação`? → **ignorar**
-2. `recurrence != null` E `isOrganizer: false`? → **ignorar**
-3. Organizador é de B2B2C ou Evolução e Regulatório E título tem Daily/Review/Alinhamento/Planning/Refinamento? → **ignorar**
-4. Qualquer outro caso → **processar** (tentar obter transcrição)
+#### Pergunta 1 — Palavras-chave no título
+
+> "Tem alguma palavra-chave no título que deve fazer a reunião ser **sempre ignorada**?"  
+> *(ex: `[Refinamento]`, `Standup`, `Diálogo de Inovação` — deixe em branco para não filtrar por título)*
+
+Salva em: `filters.ignore_title_contains` (lista de strings)
+
+#### Pergunta 2 — Recorrentes de outros organizadores
+
+> "Reuniões **recorrentes** onde você **não é o organizador** (dailys de outros times, standups, etc.) devem ser ignoradas?"  
+> *(sim/não)*
+
+Salva em: `filters.ignore_recurring_not_organizer` (true/false)
+
+#### Pergunta 3 — Times ou grupos com rotina irrelevante
+
+> "Tem algum **time ou grupo** cujas reuniões de rotina (daily, review, planning, refinamento) você **não quer resumir**?"  
+> Para cada time informado, pergunte quais tipos de reunião ignorar.  
+> *(deixe em branco para não filtrar por time)*
+
+Salva em: `filters.ignore_team_patterns` — lista de objetos `{ "team_keywords": [...], "meeting_types": [...] }`
+
+---
+
+### Aplicar os filtros a cada evento do calendário
+
+```
+1. filters.mode == "all"?                                          → processar
+2. Título contém algum item de filters.ignore_title_contains?      → ignorar
+3. ignore_recurring_not_organizer: true
+   E recurrence != null  E isOrganizer: false?                     → ignorar
+4. Para cada padrão em filters.ignore_team_patterns:
+     organizador ou título contém team_keywords
+     E tipo da reunião está em meeting_types?                       → ignorar
+5. Qualquer outro caso                                             → processar
+```
+
+> **Nota:** se `skill_config.json` já existir com a chave `filters` configurada, pule o wizard e aplique os filtros diretamente.
 
 ---
 
@@ -90,7 +118,7 @@ Retorna JSON com texto estruturado.
 ### 3. Identificar o time
 
 Se o usuário não informar o time, analise o conteúdo e pergunte:
-> "Esse resumo é do time **B2B**, **Projetos** ou de outro time?"
+> "Esse resumo é de qual time ou área?"
 
 Para um novo time, a pasta será criada automaticamente no OneDrive durante o upload.
 

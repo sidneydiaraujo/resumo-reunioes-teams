@@ -11,6 +11,7 @@ Uso:
 import sys
 import json
 import argparse
+import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -98,6 +99,100 @@ def list_week_files(token: str) -> list:
     return files
 
 
+def download_and_parse_smart(doc) -> dict:
+    """Parse documentos no novo formato inteligente (create_docx_smart.py)."""
+    result = {
+        "titulo": "", "data": "", "time": "", "participantes": [],
+        "tipo_reuniao": "", "contexto": "",
+        "secoes": [], "acoes_pendentes": [],
+        "formato": "smart"
+    }
+
+    current_section = None
+    current_items = []
+    pending_bold = None
+
+    def flush_section():
+        if current_section and current_items:
+            result["secoes"].append({"titulo": current_section, "itens": list(current_items)})
+
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text or "═" in text or "─" in text or "RESUMO DE REUNIÃO" in text:
+            continue
+
+        # Metadados
+        for label, key in [("Título:", "titulo"), ("Data:", "data"), ("Time:", "time"), ("Tipo:", "tipo_reuniao")]:
+            if text.startswith(label):
+                result[key] = text[len(label):].strip()
+                break
+        else:
+            if text.startswith("Participantes:"):
+                result["participantes"] = [p.strip() for p in text[len("Participantes:"):].split(",")]
+            elif text.startswith("Resumo gerado em:"):
+                flush_section()
+                current_section = None
+                current_items = []
+            elif text == "AÇÕES PENDENTES":
+                flush_section()
+                current_section = "__acoes__"
+                current_items = []
+            elif text.isupper() and len(text) > 3:
+                # Novo cabeçalho de seção
+                flush_section()
+                current_section = text.title()
+                current_items = []
+                pending_bold = None
+            elif current_section == "__acoes__":
+                # Itens de ações (podem ter linha de responsável/prazo abaixo)
+                if text.startswith("•"):
+                    item_text = text.lstrip("•").strip()
+                    pending_bold = item_text
+                elif pending_bold and ("Responsável:" in text or "Prazo:" in text):
+                    resp = ""
+                    prazo = ""
+                    for part in text.split("  "):
+                        part = part.strip()
+                        if part.startswith("Responsável:"):
+                            resp = part[len("Responsável:"):].strip()
+                        elif part.startswith("Prazo:"):
+                            prazo = part[len("Prazo:"):].strip()
+                    result["acoes_pendentes"].append({"item": pending_bold, "responsavel": resp, "prazo": prazo})
+                    pending_bold = None
+                elif pending_bold:
+                    result["acoes_pendentes"].append({"item": pending_bold, "responsavel": "", "prazo": ""})
+                    pending_bold = None
+            elif current_section:
+                if text.startswith("•"):
+                    item_text = text.lstrip("•").strip()
+                    pending_bold = item_text
+                elif pending_bold and not text.startswith("•"):
+                    # Linha de detalhe (indentada após bold)
+                    if "Responsável:" in text or "Prazo:" in text:
+                        resp = ""
+                        prazo = ""
+                        for part in text.split("  "):
+                            part = part.strip()
+                            if part.startswith("Responsável:"):
+                                resp = part[len("Responsável:"):].strip()
+                            elif part.startswith("Prazo:"):
+                                prazo = part[len("Prazo:"):].strip()
+                        current_items.append({"acao": pending_bold, "responsavel": resp, "prazo": prazo})
+                    else:
+                        current_items.append({"texto": pending_bold, "detalhe": text})
+                    pending_bold = None
+                elif pending_bold:
+                    current_items.append(pending_bold)
+                    pending_bold = None
+            elif not current_section and text and result["tipo_reuniao"]:
+                # Parágrafo de contexto (vem após os metadados, antes da primeira seção)
+                if not result["contexto"]:
+                    result["contexto"] = text
+
+    flush_section()
+    return result
+
+
 def download_and_parse(token: str, file_id: str) -> dict:
     import requests, io
     from docx import Document
@@ -110,46 +205,74 @@ def download_and_parse(token: str, file_id: str) -> dict:
     resp.raise_for_status()
 
     doc = Document(io.BytesIO(resp.content))
+
+    # Detecta formato pelo conteúdo dos parágrafos
+    texts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    is_smart = any("Tipo:" in t for t in texts)
+
+    if is_smart:
+        return download_and_parse_smart(doc)
+
+    # Legado: documentos antigos no formato A ou B
     result = {
         "titulo": "", "data": "", "time": "", "participantes": [],
-        "combinados": [], "proximos_passos": [], "decisoes": [],
-        "riscos": [], "pendencias": [], "regras_negocio": []
+        "formato": "legado",
+        "acoes_pendentes": [],
+        "secoes": [],
     }
-
     current_section = None
+    pending_titulo = None
+    legacy_map = {
+        "COMBINADOS": "combinados", "PRÓXIMOS PASSOS": "proximos_passos",
+        "DECISÕES": "decisoes", "RISCOS": "riscos",
+        "PENDÊNCIAS": "pendencias", "REGRAS DE NEGÓCIO": "regras_negocio",
+        "O QUE FUNCIONA": "funciona", "O QUE NÃO FUNCIONA": "nao_funciona",
+        "ENCAMINHAMENTOS": "encaminhamentos",
+    }
+    legacy_data = {v: [] for v in legacy_map.values()}
+
     for para in doc.paragraphs:
         text = para.text.strip()
-        if not text:
-            continue
-
-        if "RESUMO DE REUNIÃO" in text or "═" in text:
+        if not text or "═" in text or "─" in text or "RESUMO DE REUNIÃO" in text:
             continue
         if text.startswith("Título:"):
-            result["titulo"] = text.replace("Título:", "").strip()
+            result["titulo"] = text[len("Título:"):].strip()
         elif text.startswith("Data:"):
-            result["data"] = text.replace("Data:", "").strip()
+            result["data"] = text[len("Data:"):].strip()
         elif text.startswith("Time:"):
-            result["time"] = text.replace("Time:", "").strip()
+            result["time"] = text[len("Time:"):].strip()
         elif text.startswith("Participantes:"):
-            result["participantes"] = [p.strip() for p in text.replace("Participantes:", "").split(",")]
-        elif "COMBINADOS" in text:
-            current_section = "combinados"
-        elif "PRÓXIMOS PASSOS" in text:
-            current_section = "proximos_passos"
-        elif "DECISÕES" in text:
-            current_section = "decisoes"
-        elif "RISCOS" in text:
-            current_section = "riscos"
-        elif "PENDÊNCIAS" in text:
-            current_section = "pendencias"
-        elif "REGRAS DE NEGÓCIO" in text:
-            current_section = "regras_negocio"
-        elif text.startswith("•") and current_section:
-            item = text.lstrip("•").strip()
-            if item and "Nenhum" not in item and "Nenhuma" not in item:
-                result[current_section].append(item)
+            result["participantes"] = [p.strip() for p in text[len("Participantes:"):].split(",")]
         elif text.startswith("Resumo gerado"):
             current_section = None
+        else:
+            for header, key in legacy_map.items():
+                if header in text:
+                    current_section = key
+                    pending_titulo = None
+                    break
+            else:
+                if text.startswith("•") and current_section:
+                    item = text.lstrip("•").strip()
+                    if item and "Nenhum" not in item:
+                        if current_section in ("funciona", "nao_funciona"):
+                            pending_titulo = item
+                        else:
+                            legacy_data[current_section].append(item)
+                elif pending_titulo and current_section in ("funciona", "nao_funciona"):
+                    legacy_data[current_section].append({"titulo": pending_titulo, "detalhe": text})
+                    pending_titulo = None
+
+    # Normaliza para acoes_pendentes (rastreamento semanal)
+    for item in legacy_data.get("combinados", []) + legacy_data.get("proximos_passos", []) + legacy_data.get("pendencias", []):
+        if isinstance(item, str):
+            result["acoes_pendentes"].append({"item": item, "responsavel": "", "prazo": ""})
+
+    # Converte seções legadas para secoes
+    for header, key in legacy_map.items():
+        items = legacy_data.get(key, [])
+        if items:
+            result["secoes"].append({"titulo": header.title(), "itens": items})
 
     return result
 
@@ -157,55 +280,114 @@ def download_and_parse(token: str, file_id: str) -> dict:
 def format_html_report(meetings: list, week_start: datetime, week_end: datetime) -> str:
     semana = f"{week_start.strftime('%d/%m')} a {week_end.strftime('%d/%m/%Y')}"
 
+    # Formato A
     combinados_html = ""
     pendencias_html = ""
     proximos_html = ""
     decisoes_html = ""
+    # Formato B
+    diagnosticos_html = ""
+
+    def meta_label(titulo, team, data):
+        return f'<span style="color:#888;font-weight:normal">({team} — {data})</span>'
+
+    def items_list(items):
+        if not items:
+            return ""
+        rows = ""
+        for item in items:
+            rows += f"<li>{item}</li>"
+        return rows
+
+    def diagnostico_block(titulo, team, data, funciona, nao_funciona, encaminhamentos):
+        block = f'<div class="diag-block">'
+        block += f'<h4>{titulo} {meta_label(titulo, team, data)}</h4>'
+        if funciona:
+            block += '<p class="diag-label funciona-label">O que funciona</p><ul>'
+            for i in funciona:
+                t = i.get("titulo", i) if isinstance(i, dict) else i
+                d = i.get("detalhe", "") if isinstance(i, dict) else ""
+                block += f'<li><strong>{t}</strong>'
+                if d:
+                    block += f'<br><span class="detalhe">{d}</span>'
+                block += '</li>'
+            block += '</ul>'
+        if nao_funciona:
+            block += '<p class="diag-label nao-funciona-label">O que não funciona</p><ul>'
+            for i in nao_funciona:
+                t = i.get("titulo", i) if isinstance(i, dict) else i
+                d = i.get("detalhe", "") if isinstance(i, dict) else ""
+                block += f'<li><strong>{t}</strong>'
+                if d:
+                    block += f'<br><span class="detalhe">{d}</span>'
+                block += '</li>'
+            block += '</ul>'
+        if encaminhamentos:
+            block += '<p class="diag-label enc-label">Encaminhamentos</p><ul>'
+            for item in encaminhamentos:
+                block += f'<li>{item}</li>'
+            block += '</ul>'
+        block += '</div>'
+        return block
 
     for m in meetings:
         titulo = m.get("titulo") or m.get("name", "")
         team = m.get("team", "")
         data = m.get("data", "")
+        fmt = m.get("formato", "padrao")
 
-        def section_block(items, label_key=None):
-            if not items:
-                return ""
-            rows = ""
-            for item in items:
-                rows += f"<li>{item}</li>"
-            return rows
-
-        if m.get("combinados"):
-            combinados_html += f'<h4>📋 {titulo} <span style="color:#888;font-weight:normal">({team} — {data})</span></h4><ul>{section_block(m["combinados"])}</ul>'
-
-        if m.get("pendencias"):
-            pendencias_html += f'<h4>⏳ {titulo} <span style="color:#888;font-weight:normal">({team} — {data})</span></h4><ul>{section_block(m["pendencias"])}</ul>'
-
-        if m.get("proximos_passos"):
-            proximos_html += f'<h4>▶ {titulo} <span style="color:#888;font-weight:normal">({team} — {data})</span></h4><ul>{section_block(m["proximos_passos"])}</ul>'
-
-        if m.get("decisoes"):
-            decisoes_html += f'<h4>✅ {titulo} <span style="color:#888;font-weight:normal">({team} — {data})</span></h4><ul>{section_block(m["decisoes"])}</ul>'
+        if fmt == "funciona_nao_funciona":
+            if m.get("funciona") or m.get("nao_funciona"):
+                diagnosticos_html += diagnostico_block(
+                    titulo, team, data,
+                    m.get("funciona", []),
+                    m.get("nao_funciona", []),
+                    m.get("encaminhamentos", [])
+                )
+        else:
+            if m.get("combinados"):
+                combinados_html += f'<h4>{titulo} {meta_label(titulo, team, data)}</h4><ul>{items_list(m["combinados"])}</ul>'
+            if m.get("proximos_passos"):
+                proximos_html += f'<h4>{titulo} {meta_label(titulo, team, data)}</h4><ul>{items_list(m["proximos_passos"])}</ul>'
+            if m.get("pendencias"):
+                pendencias_html += f'<h4>{titulo} {meta_label(titulo, team, data)}</h4><ul>{items_list(m["pendencias"])}</ul>'
+            if m.get("decisoes"):
+                decisoes_html += f'<h4>{titulo} {meta_label(titulo, team, data)}</h4><ul>{items_list(m["decisoes"])}</ul>'
 
     reunioes_lista = "".join(
-        f'<li><strong>{m.get("titulo") or m.get("name","")}</strong> — {m.get("team","")} ({m.get("data","")})</li>'
+        f'<li><strong>{m.get("titulo") or m.get("name","")}</strong> — {m.get("team","")} ({m.get("data","")})'
+        f'{"&nbsp;<span class=\'badge-diag\'>diagnóstico</span>" if m.get("formato") == "funciona_nao_funciona" else ""}</li>'
         for m in meetings
     )
+
+    diag_section = ""
+    if diagnosticos_html:
+        diag_section = f"""
+<h2>Diagnósticos — Funciona / Não Funciona</h2>
+<div class="section">{diagnosticos_html}</div>
+"""
 
     html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <style>
-  body {{ font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 24px; color: #242424; }}
+  body {{ font-family: 'Segoe UI', Arial, sans-serif; max-width: 820px; margin: 0 auto; padding: 24px; color: #242424; }}
   h1 {{ color: #1f497d; border-bottom: 2px solid #1f497d; padding-bottom: 8px; }}
   h2 {{ color: #1f497d; margin-top: 32px; border-left: 4px solid #1f497d; padding-left: 12px; }}
   h4 {{ margin: 16px 0 4px; color: #333; }}
   ul {{ margin: 4px 0 12px 0; padding-left: 20px; }}
-  li {{ margin-bottom: 4px; line-height: 1.5; }}
+  li {{ margin-bottom: 6px; line-height: 1.5; }}
   .meta {{ color: #666; font-size: 14px; margin-bottom: 24px; }}
   .section {{ background: #f9f9f9; border-radius: 8px; padding: 16px; margin-bottom: 16px; }}
   .empty {{ color: #999; font-style: italic; }}
+  .detalhe {{ color: #555; font-size: 13px; }}
+  .diag-block {{ margin-bottom: 24px; border-left: 3px solid #ddd; padding-left: 12px; }}
+  .diag-label {{ font-weight: bold; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin: 10px 0 4px; }}
+  .funciona-label {{ color: #117832; }}
+  .nao-funciona-label {{ color: #b41e1e; }}
+  .enc-label {{ color: #1f497d; }}
+  .badge-diag {{ background: #e8f0fe; color: #1f497d; font-size: 11px; padding: 1px 6px; border-radius: 4px; font-weight: normal; }}
 </style>
 </head>
 <body>
@@ -214,6 +396,8 @@ def format_html_report(meetings: list, week_start: datetime, week_end: datetime)
 
 <h2>Reuniões processadas ({len(meetings)})</h2>
 <div class="section"><ul>{reunioes_lista or '<li class="empty">Nenhuma reunião processada.</li>'}</ul></div>
+
+{diag_section}
 
 <h2>Combinados</h2>
 <div class="section">{combinados_html or '<p class="empty">Nenhum combinado registrado.</p>'}</div>
@@ -234,7 +418,8 @@ def format_html_report(meetings: list, week_start: datetime, week_end: datetime)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="C:\\Users\\sidne\\AppData\\Local\\Temp\\relatorio_semanal.html")
+    parser.add_argument("--output", default=str(Path(tempfile.gettempdir()) / "relatorio_semanal.html"))
+    parser.add_argument("--json-output", help="Se informado, salva os dados brutos das reuniões como JSON (para análise pelo Claude)")
     args = parser.parse_args()
 
     ensure_deps()
@@ -256,6 +441,15 @@ def main():
             meetings.append(parsed)
         except Exception as e:
             print(f"  Aviso: erro ao ler {f['name']}: {e}")
+
+    if args.json_output:
+        Path(args.json_output).write_text(
+            json.dumps({"semana": f"{week_start.strftime('%d/%m')} a {week_end.strftime('%d/%m/%Y')}", "reunioes": meetings}, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+        print(f"Dados brutos salvos em: {args.json_output}")
+        print(json.dumps({"success": True, "meetings": len(meetings), "json_output": args.json_output}))
+        return
 
     html = format_html_report(meetings, week_start, week_end)
     Path(args.output).write_text(html, encoding="utf-8")

@@ -110,6 +110,36 @@ Pergunte ao usuário o caminho do arquivo de transcrição exportado manualmente
 
 ---
 
+### 1b. Verificar duplicidade antes de processar
+
+**Para cada reunião identificada** (tanto no processamento individual quanto em lote), verifique se já existe um resumo salvo no OneDrive **antes de gerar qualquer coisa**.
+
+Use `mcp__claude_ai_Microsoft_365__sharepoint_search` com:
+```
+query: YYYY-MM-DD
+folderName: Reuniões dos Times
+fileType: docx
+afterDateTime: <início do dia da reunião>
+beforeDateTime: <fim do dia da reunião>
+```
+
+Se retornar arquivos, compare o nome: arquivos seguem o padrão `YYYY-MM-DD_titulo_time.docx`. Se o título do arquivo corresponder à reunião sendo processada (mesma data, título parecido), **pule essa reunião**.
+
+**Comportamento por cenário:**
+
+| Situação | O que fazer |
+|---|---|
+| Nenhum arquivo encontrado nessa data | Processar normalmente |
+| Arquivo encontrado com título diferente (outra reunião do mesmo dia) | Processar — não é duplicata |
+| Arquivo encontrado com título compatível | Pular — já existe resumo |
+| Usuário pediu explicitamente para refazer ("reprocessa", "atualiza o resumo") | Processar e sobrescrever |
+
+Ao pular uma reunião por duplicidade, informe: *"O resumo de '[título]' já existe no OneDrive (`[nome do arquivo]`). Pulando para evitar duplicidade."*
+
+Se estiver processando em lote ("resume as reuniões de hoje"), liste no final quais foram processadas e quais já existiam.
+
+---
+
 ### 2. Extrair o texto da transcrição
 
 **Via MCP (Modo A):** o conteúdo já vem estruturado no campo `content` da resposta. Se for muito grande (>200KB), spawne um subagente para processar e retornar apenas o JSON de resumo.
@@ -325,6 +355,8 @@ Salve as respostas em `skill_config.json` (não commitado no git).
 cd "$env:USERPROFILE\.claude\skills\resumo-reunioes-teams"
 python scripts/weekly_consolidate.py --json-output "$env:TEMP\reunioes_semana.json"
 ```
+
+> O script lê apenas os arquivos `.docx` já salvos no OneDrive — não gera novos resumos. Reuniões processadas manualmente ao longo da semana já estarão incluídas aqui sem duplicidade.
 
 **Passo 3 — Analisar e escrever o HTML do relatório (sua responsabilidade):**
 

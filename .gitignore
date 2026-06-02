@@ -1,4 +1,2 @@
-skill_config.json
-__pycache__/
+scripts/__pycache__/
 *.pyc
-*.pyo

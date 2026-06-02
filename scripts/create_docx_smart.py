@@ -50,6 +50,7 @@ TIPO_BADGE = {
     "review":        "Review",
     "planning":      "Planning",
     "workshop":      "Workshop",
+    "daily":         "Daily",
 }
 
 
@@ -205,6 +206,90 @@ def create_smart_docx(resumo: dict, output_path: str) -> str:
                 })
             else:
                 render_item(item)
+
+    # ─── Contextos Anteriores ───
+    contextos = resumo.get("contextos_anteriores", {})
+    resolvidos = contextos.get("resolvidos", [])
+    persistentes = contextos.get("persistentes", [])
+
+    if resolvidos or persistentes:
+        add_section_heading("CONTEXTOS DE REUNIÕES ANTERIORES")
+
+        GREEN  = RGBColor(0, 112, 0)
+        ORANGE = RGBColor(197, 90, 17)
+
+        if resolvidos:
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after = Pt(2)
+            r = p.add_run("✅  Resolvidos nesta reunião")
+            r.bold = True
+            r.font.size = Pt(10.5)
+            r.font.color.rgb = GREEN
+            for ctx in resolvidos:
+                p2 = doc.add_paragraph(style='List Bullet')
+                p2.paragraph_format.left_indent = Inches(0.3)
+                p2.paragraph_format.space_after = Pt(2)
+                texto = ctx.get("item", "")
+                como  = ctx.get("como", "")
+                data_r = ctx.get("resolvido_em", "")
+                p2.add_run(texto).font.size = Pt(10.5)
+                if como or data_r:
+                    p3 = doc.add_paragraph()
+                    p3.paragraph_format.left_indent = Inches(0.55)
+                    p3.paragraph_format.space_after = Pt(5)
+                    meta = []
+                    if data_r:
+                        meta.append(f"Resolvido em: {data_r}")
+                    if como:
+                        meta.append(como)
+                    r3 = p3.add_run("  ".join(meta))
+                    r3.font.size = Pt(9.5)
+                    r3.font.color.rgb = GREEN
+
+        if persistentes:
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after = Pt(2)
+            r = p.add_run("⏳  Ainda em aberto")
+            r.bold = True
+            r.font.size = Pt(10.5)
+            r.font.color.rgb = ORANGE
+            for ctx in persistentes:
+                p2 = doc.add_paragraph(style='List Bullet')
+                p2.paragraph_format.left_indent = Inches(0.3)
+                p2.paragraph_format.space_after = Pt(2)
+                texto = ctx.get("item", "")
+                status = ctx.get("status_atual", "")
+                desde  = ctx.get("aberto_desde", "")
+                p2.add_run(texto).font.size = Pt(10.5)
+                if status or desde:
+                    p3 = doc.add_paragraph()
+                    p3.paragraph_format.left_indent = Inches(0.55)
+                    p3.paragraph_format.space_after = Pt(5)
+                    meta = []
+                    if desde:
+                        meta.append(f"Em aberto desde: {desde}")
+                    if status:
+                        meta.append(f"Status: {status}")
+                    r3 = p3.add_run("  ".join(meta))
+                    r3.font.size = Pt(9.5)
+                    r3.font.color.rgb = ORANGE
+
+    # ─── IDs Jira mencionados ───
+    jira_ids = resumo.get("jira_ids_mencionados", [])
+    if jira_ids:
+        add_divider()
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after = Pt(3)
+        r = p.add_run("IDs Jira mencionados:  ")
+        r.bold = True
+        r.font.size = Pt(10)
+        r.font.color.rgb = GRAY
+        r2 = p.add_run("  ·  ".join(jira_ids))
+        r2.font.size = Pt(10)
+        r2.font.color.rgb = BLUE
 
     # ─── Rodapé ───
     add_divider()

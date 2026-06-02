@@ -134,6 +134,7 @@ Pergunte-se: *"O que as pessoas estavam tentando resolver ou decidir nessa reuni
 
 | Teor | O que buscar | Seções naturais |
 |---|---|---|
+| **Daily** | status de cada membro, bloqueios, o que foi feito e o que vai ser feito | Entregues, Em andamento, Impedimentos, Contextos resolvidos, Contextos persistentes |
 | **Diagnóstico** | debate sobre o que funciona/não funciona, saúde do processo | O que funciona, O que não funciona, Encaminhamentos |
 | **Operacional** | tarefas, prazos, bloqueios, quem faz o quê | Combinados, Impedimentos, Próximos Passos |
 | **Estratégico** | direção, prioridades, posicionamento, decisões de produto | Contexto, Decisões, Implicações, Próximos Passos |
@@ -152,7 +153,7 @@ Se a reunião mistura dois teores, priorize o que gerou mais discussão.
   "data": "YYYY-MM-DD",
   "time": "...",
   "participantes": ["Nome1", "Nome2"],
-  "tipo_reuniao": "diagnóstico|operacional|estratégico|alinhamento|review|planning|workshop",
+  "tipo_reuniao": "diagnóstico|operacional|estratégico|alinhamento|review|planning|workshop|daily",
   "contexto": "1-2 frases: por que essa reunião aconteceu e qual era o objetivo central",
   "secoes": [
     {
@@ -166,7 +167,16 @@ Se a reunião mistura dois teores, priorize o que gerou mais discussão.
   ],
   "acoes_pendentes": [
     {"item": "...", "responsavel": "...", "prazo": "..."}
-  ]
+  ],
+  "jira_ids_mencionados": ["TPROJ-123", "B2B-456"],
+  "contextos_anteriores": {
+    "resolvidos": [
+      {"item": "...", "resolvido_em": "YYYY-MM-DD", "como": "breve descrição"}
+    ],
+    "persistentes": [
+      {"item": "...", "aberto_desde": "YYYY-MM-DD", "status_atual": "..."}
+    ]
+  }
 }
 ```
 
@@ -175,7 +185,56 @@ Se a reunião mistura dois teores, priorize o que gerou mais discussão.
 - Use `{"texto", "detalhe"}` quando um item precisa de contexto para ser compreendido
 - Use `{"acao", "responsavel", "prazo"}` para compromissos e próximos passos
 - `acoes_pendentes` é obrigatório e sempre preenchido — é o que alimenta o rastreamento semanal. Se não há prazo, use `"A definir"`
+- `jira_ids_mencionados` e `contextos_anteriores` são opcionais — inclua apenas se houver conteúdo
 - Se um campo não se aplica, omita — não force seções vazias
+
+---
+
+#### Inteligência para referências visuais e IDs Jira
+
+Dailys e alinhamentos frequentemente acontecem com o quadro Jira aberto na tela. Participantes dizem coisas como *"esse aqui"*, *"aquilo ali"*, *"mas ali não vai"* — sem nomear o item. Nunca registre essas expressões literais no resumo. Sempre resolva ou descreva com contexto.
+
+**Estratégia de resolução:**
+
+1. **Busque IDs Jira próximos** — padrão `[A-Z]{2,10}-\d+` (ex: `TPROJ-123`, `B2B-456`). Se um ID aparece na mesma fala ou nas 2-3 falas anteriores/posteriores, associe a referência vaga a ele.
+
+2. **Identifique o dono pelo speaker** — em dailys, cada pessoa geralmente fala das *suas* tarefas. Se João diz "esse aqui tá travado", busque quais IDs João mencionou recentemente na conversa.
+
+3. **Leia as palavras de status** — "travado", "bloqueado", "dependência de X", "não vai entrar na sprint", "pronto", "feito", "subiu" indicam o estado da tarefa. Use essas palavras para enriquecer a descrição.
+
+4. **Construa a descrição do item** com o que for possível inferir:
+   - Com ID: `"TPROJ-123 — bloqueada por falta de retorno do jurídico (João)"`
+   - Sem ID: `"Tarefa de João [ID não identificado na transcrição] — impedimento: dependência do time de infra"`
+
+5. **IDs explicitamente ditos** — normalize e capture sempre. Se alguém diz "o tê proj cento e vinte e três" ou "o ticket 123 do projetos", registre como `TPROJ-123` em `jira_ids_mencionados`. Se dito com contexto relevante, inclua na seção adequada do resumo.
+
+6. **Quando não for possível resolver** — use `[ref. visual não identificada]` e descreva o que foi dito ao redor. Nunca omita a informação, mesmo que vaga.
+
+---
+
+#### Rastreamento de contextos entre reuniões
+
+Antes de gerar o resumo de qualquer reunião, verifique se há resumos anteriores do mesmo time. Isso permite rastrear problemas que persistem ou se resolvem ao longo do tempo.
+
+**Como executar:**
+
+1. Use `mcp__claude_ai_Microsoft_365__sharepoint_search` para buscar os últimos 3-5 resumos do mesmo time (pasta `Reuniões dos Times/<time>/`), ordenados por data decrescente.
+
+2. Leia os `acoes_pendentes` de cada resumo encontrado. Esses são os contextos em aberto.
+
+3. Para cada item em aberto, verifique na transcrição atual se ele foi **mencionado, resolvido ou continua pendente**:
+
+   | Situação | O que fazer |
+   |---|---|
+   | Mencionado como resolvido ("foi feito", "subiu", "aprovado", "fechamos") | Adicionar em `contextos_anteriores.resolvidos` com data e como foi resolvido |
+   | Mencionado mas ainda em aberto ("continua travado", "ainda aguardando") | Adicionar em `contextos_anteriores.persistentes` com data de abertura e status atual |
+   | Não mencionado | Não incluir nos contextos — pode reaparecer na próxima reunião |
+
+4. **Para dailys especificamente:** os contextos são a cola entre os dias. Um bloqueio levantado na segunda deve aparecer como `persistente` na terça e quarta, e como `resolvido` assim que a equipe confirmar a solução.
+
+5. **Para reuniões de outros tipos:** use o mesmo rastreamento para decisões pendentes, pendências de aceite, itens aguardando resposta externa — qualquer `acao_pendente` que aparecer em reuniões subsequentes deve ter seu ciclo rastreado.
+
+**Importante:** o rastreamento é opcional quando não há resumos anteriores do time no OneDrive. Nesse caso, omita `contextos_anteriores` do JSON e processe normalmente.
 
 #### Boas práticas para fácil consulta
 

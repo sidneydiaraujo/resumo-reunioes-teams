@@ -6,16 +6,11 @@ Skill do Claude Code que processa transcrições de reuniões do Microsoft Teams
 
 ## O que essa skill faz
 
-1. Busca transcrições de reuniões diretamente via Microsoft 365 (ou aceita arquivo .vtt/.docx exportado)
-2. Analisa o conteúdo e extrai automaticamente:
-   - Regras de negócio discutidas
-   - Combinados e responsáveis
-   - Próximos passos com prazos
-   - Decisões tomadas
-   - Riscos e impedimentos
-   - Pendências em aberto
-3. Gera um documento `.docx` formatado
-4. Salva no OneDrive em `Reuniões dos Times/<nome-do-time>/`
+1. Busca reuniões no seu calendário via Microsoft 365 (ou aceita arquivo `.vtt`/`.docx` exportado manualmente)
+2. Identifica o **teor da reunião** (daily, diagnóstico, operacional, estratégico, alinhamento, review, planning, workshop) e estrutura o resumo de forma inteligente — sem template fixo
+3. Rastreia **contextos entre reuniões**: problemas abertos numa daily aparecem como pendentes nas seguintes e são marcados como resolvidos quando encerrados
+4. Gera um documento `.docx` formatado e salva no OneDrive em `Reuniões dos Times/<time>/`
+5. Evita duplicidade: antes de processar, verifica se o resumo daquela reunião já existe no OneDrive
 
 ---
 
@@ -23,11 +18,9 @@ Skill do Claude Code que processa transcrições de reuniões do Microsoft Teams
 
 - [Claude Code](https://claude.ai/code) instalado
 - Python 3.8 ou superior
-- Integração **Microsoft 365** habilitada no Claude Code (para buscar reuniões e salvar no OneDrive)
-- Bibliotecas Python:
-  ```bash
-  pip install python-docx requests
-  ```
+- Integração **Microsoft 365** habilitada no Claude Code
+
+> As dependências Python (`msal`, `requests`, `python-docx`) são instaladas automaticamente na primeira execução — não é necessário rodar `pip install` manualmente.
 
 ---
 
@@ -45,23 +38,15 @@ git clone https://github.com/sidneydiaraujo/resumo-reunioes-teams
 **Windows (PowerShell):**
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills"
-cd "$env:USERPROFILE\.claude\skills"
+Set-Location "$env:USERPROFILE\.claude\skills"
 git clone https://github.com/sidneydiaraujo/resumo-reunioes-teams
 ```
 
-### 2. Instale as dependências Python
+### 2. Habilite a integração Microsoft 365 no Claude Code
 
-```bash
-pip install python-docx requests
-```
+No Claude Code, acesse as configurações de integrações e habilite **Microsoft 365**. Na primeira vez, o Claude solicitará autenticação com sua conta corporativa.
 
-### 3. Habilite a integração Microsoft 365 no Claude Code
-
-Esta skill usa o MCP do Microsoft 365 para acessar calendário, transcrições de reuniões e OneDrive.
-
-No Claude Code, acesse as configurações de integrações e habilite **Microsoft 365**. Na primeira vez que a skill precisar acessar sua conta, o Claude vai solicitar autenticação.
-
-### 4. Reinicie o Claude Code
+### 3. Reinicie o Claude Code
 
 Feche e reabra o Claude Code para carregar a skill.
 
@@ -80,22 +65,22 @@ Basta pedir ao Claude Code:
 
 O Claude vai:
 1. Buscar a reunião no seu calendário (ou processar o arquivo fornecido)
-2. Extrair o conteúdo da transcrição
-3. Perguntar o time (B2B, Projetos, etc.) se não estiver claro
-4. Gerar o documento `.docx` com o resumo estruturado
+2. Verificar se já existe resumo salvo para evitar duplicidade
+3. Identificar o time se não estiver claro
+4. Gerar o `.docx` com resumo estruturado conforme o teor da reunião
 5. Salvar no OneDrive e retornar o link
 
 ---
 
-## Filtros automáticos
+## Filtros de reuniões
 
-Na primeira execução, a skill pergunta como você quer filtrar as reuniões e salva a configuração em `skill_config.json`. As opções incluem:
+Na primeira execução, a skill pergunta como você quer filtrar as reuniões e salva a configuração em `skill_config.json` (arquivo local, não versionado). As opções incluem:
 
 - **Anfitriões autorizados** — processar apenas reuniões criadas por pessoas específicas
 - **Palavras-chave no título** — ignorar reuniões cujo título contenha determinados termos
 - **Times com rotina própria** — ignorar dailys, reviews e plannings de times com seus próprios Scrum Masters
 
-Consulte `skill_config.example.json` para ver a estrutura completa.
+Consulte `skill_config.example.json` para ver a estrutura completa de configuração.
 
 ### Configuração pronta para uso
 
@@ -109,13 +94,17 @@ Se você trabalha em um contexto similar ao da Thunders (Scrum Master em empresa
 
 ```
 resumo-reunioes-teams/
-├── SKILL.md                     # Definição da skill (lida pelo Claude)
+├── SKILL.md                        # Definição da skill (lida pelo Claude)
+├── skill_config.example.json       # Modelo de configuração de filtros
 ├── scripts/
-│   ├── create_docx.py           # Gera o arquivo .docx a partir do JSON
-│   ├── onedrive_upload.py       # Faz upload para o OneDrive
-│   ├── parse_transcript.py      # Processa arquivos .vtt e .docx locais
-│   ├── send_report.py           # Envia relatório consolidado
-│   └── weekly_consolidate.py   # Consolida reuniões da semana
+│   ├── create_docx_smart.py        # Gera .docx no formato inteligente (padrão)
+│   ├── create_docx_diagnostico.py  # Gera .docx no formato diagnóstico
+│   ├── create_docx.py              # Gera .docx no formato legado
+│   ├── onedrive_upload.py          # Faz upload para o OneDrive
+│   ├── parse_transcript.py         # Processa arquivos .vtt e .docx locais
+│   ├── send_report.py              # Envia relatório semanal consolidado
+│   ├── weekly_consolidate.py       # Consolida reuniões da semana em JSON/HTML
+│   └── weekly_report_task.ps1      # Script para agendamento semanal automático
 └── README.md
 ```
 
@@ -123,4 +112,4 @@ resumo-reunioes-teams/
 
 ## Integração com reunioes-consulta
 
-Após salvar um resumo, o Claude vai oferecer consultar informações das reuniões salvas. Isso usa a skill **reunioes-consulta** — instale-a também para ter o fluxo completo.
+Após salvar resumos, você pode consultar o conteúdo das reuniões em linguagem natural ("o que foi decidido sobre X?", "quais são os próximos passos do time B2B?"). Isso usa a skill complementar **[reunioes-consulta](https://github.com/sidneydiaraujo/reunioes-consulta)** — instale-a também para ter o fluxo completo.

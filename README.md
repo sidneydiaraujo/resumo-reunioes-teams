@@ -89,10 +89,19 @@ O Claude vai:
 
 ## Filtros automáticos
 
-A skill ignora automaticamente:
-- Reuniões com `[Refinamento]` ou `Diálogo de Inovação` no título
-- Reuniões recorrentes onde você não é organizador (dailys de outros times, etc.)
-- Reuniões dos times B2B2C e Evolução & Regulatório (daily, review, planning)
+Na primeira execução, a skill pergunta como você quer filtrar as reuniões e salva a configuração em `skill_config.json`. As opções incluem:
+
+- **Anfitriões autorizados** — processar apenas reuniões criadas por pessoas específicas
+- **Palavras-chave no título** — ignorar reuniões cujo título contenha determinados termos
+- **Times com rotina própria** — ignorar dailys, reviews e plannings de times com seus próprios Scrum Masters
+
+Consulte `skill_config.example.json` para ver a estrutura completa.
+
+### Configuração pronta para uso
+
+Se você trabalha em um contexto similar ao da Thunders (Scrum Master em empresa com múltiplos times), existe uma configuração personalizada pronta:
+
+> **[resumo-reunioes-teams-thunders](https://github.com/sidneydiaraujo/resumo-reunioes-teams-thunders)** — filtros por anfitrião autorizado, cerimônias ignoradas por time e títulos específicos.
 
 ---
 

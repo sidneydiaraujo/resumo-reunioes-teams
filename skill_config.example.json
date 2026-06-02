@@ -6,7 +6,7 @@
   "filters": {
     "mode": "custom",
     "ignore_title_contains": [],
-    "ignore_recurring_not_organizer": true,
+    "ignore_recurring_not_organizer": false,
     "ignore_team_patterns": [
       {
         "_comment": "Exemplo: ignorar dailys e reviews de um time específico",

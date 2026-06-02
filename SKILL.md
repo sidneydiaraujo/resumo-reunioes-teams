@@ -23,27 +23,35 @@ Pergunte ao usuário:
 
 **Se escolher "Processar tudo":** salve `"filters": { "mode": "all" }` e siga em frente.
 
-**Se escolher "Configurar filtros":** faça as três perguntas abaixo, salve em `skill_config.json` e use nos processamentos seguintes.
+**Se escolher "Configurar filtros":** faça as quatro perguntas abaixo, salve em `skill_config.json` e use nos processamentos seguintes.
 
 ---
 
 #### Pergunta 1 — Palavras-chave no título
 
 > "Tem alguma palavra-chave no título que deve fazer a reunião ser **sempre ignorada**?"  
-> *(ex: `[Refinamento]`, `Standup`, `Diálogo de Inovação` — deixe em branco para não filtrar por título)*
+> *(ex: `[Refinamento]`, `Standup`, `Release` — deixe em branco para não filtrar por título)*
 
 Salva em: `filters.ignore_title_contains` (lista de strings)
 
-#### Pergunta 2 — Recorrentes de outros organizadores
+#### Pergunta 2 — Anfitriões autorizados
 
-> "Reuniões **recorrentes** onde você **não é o organizador** (dailys de outros times, standups, etc.) devem ser ignoradas?"  
+> "Você quer processar **apenas reuniões criadas por pessoas específicas**? Se sim, liste os nomes completos dos organizadores cujas reuniões devem ser resumidas. Reuniões de qualquer outro anfitrião serão ignoradas."  
+> *(deixe em branco para não restringir por organizador)*
+
+Salva em: `filters.allowed_organizers` (lista de nomes — correspondência parcial, sem distinção de maiúsculas)
+
+#### Pergunta 3 — Recorrentes de outros organizadores
+
+> Só pergunte isso se `allowed_organizers` **não** foi preenchido.  
+> "Reuniões **recorrentes** onde você **não é o organizador** devem ser ignoradas?"  
 > *(sim/não)*
 
 Salva em: `filters.ignore_recurring_not_organizer` (true/false)
 
-#### Pergunta 3 — Times ou grupos com rotina irrelevante
+#### Pergunta 4 — Times ou grupos com rotina irrelevante
 
-> "Tem algum **time ou grupo** cujas reuniões de rotina (daily, review, planning, refinamento) você **não quer resumir**?"  
+> "Tem algum **time ou grupo** cujas reuniões de rotina (daily, review, planning, refinamento) você **não quer resumir**, mesmo que organizadas por alguém da lista de anfitriões?"  
 > Para cada time informado, pergunte quais tipos de reunião ignorar.  
 > *(deixe em branco para não filtrar por time)*
 
@@ -53,16 +61,22 @@ Salva em: `filters.ignore_team_patterns` — lista de objetos `{ "team_keywords"
 
 ### Aplicar os filtros a cada evento do calendário
 
+Para cada evento, verifique na ordem abaixo e pare na primeira regra que bater:
+
 ```
-1. filters.mode == "all"?                                          → processar
-2. Título contém algum item de filters.ignore_title_contains?      → ignorar
-3. ignore_recurring_not_organizer: true
-   E recurrence != null  E isOrganizer: false?                     → ignorar
-4. Para cada padrão em filters.ignore_team_patterns:
+1. filters.mode == "all"?                                              → processar
+2. Título contém algum item de filters.ignore_title_contains?          → ignorar
+3. allowed_organizers está preenchido
+   E nome do organizador NÃO contém nenhum item da lista?              → ignorar
+4. allowed_organizers vazio E ignore_recurring_not_organizer: true
+   E recurrence != null  E isOrganizer: false?                         → ignorar
+5. Para cada padrão em filters.ignore_team_patterns:
      organizador ou título contém team_keywords
-     E tipo da reunião está em meeting_types?                       → ignorar
-5. Qualquer outro caso                                             → processar
+     E tipo da reunião está em meeting_types?                           → ignorar
+6. Qualquer outro caso                                                 → processar
 ```
+
+**Como identificar o organizador do evento:** use o campo `organizer.emailAddress.name` ou `organizer.emailAddress.address` retornado pela API do calendário. A comparação com `allowed_organizers` é feita por `contains` (parcial, case-insensitive) — assim "Giovana Rodrigues" bate em "Giovana Rodrigues (Thunders)" ou variações com acento.
 
 > **Nota:** se `skill_config.json` já existir com a chave `filters` configurada, pule o wizard e aplique os filtros diretamente.
 

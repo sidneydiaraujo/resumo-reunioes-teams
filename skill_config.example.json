@@ -6,6 +6,7 @@
   "filters": {
     "mode": "custom",
     "ignore_title_contains": [],
+    "allowed_organizers": [],
     "ignore_recurring_not_organizer": false,
     "ignore_team_patterns": [
       {

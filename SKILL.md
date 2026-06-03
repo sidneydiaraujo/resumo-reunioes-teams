@@ -23,33 +23,41 @@ Pergunte ao usuário:
 
 **Se escolher "Processar tudo":** salve `"filters": { "mode": "all" }` e siga em frente.
 
-**Se escolher "Configurar filtros":** faça as quatro perguntas abaixo, salve em `skill_config.json` e use nos processamentos seguintes.
+**Se escolher "Configurar filtros":** faça as cinco perguntas abaixo, salve em `skill_config.json` e use nos processamentos seguintes.
 
 ---
 
-#### Pergunta 1 — Palavras-chave no título
+#### Pergunta 1 — Palavras-chave no título para ignorar
 
 > "Tem alguma palavra-chave no título que deve fazer a reunião ser **sempre ignorada**?"  
-> *(ex: `[Refinamento]`, `Standup`, `Release` — deixe em branco para não filtrar por título)*
+> *(ex: `All Hands`, `Treinamento`, `Diálogo de Inovação` — deixe em branco para não filtrar por título)*
 
 Salva em: `filters.ignore_title_contains` (lista de strings)
 
 #### Pergunta 2 — Anfitriões autorizados
 
-> "Você quer processar **apenas reuniões criadas por pessoas específicas**? Se sim, liste os nomes completos dos organizadores cujas reuniões devem ser resumidas. Reuniões de qualquer outro anfitrião serão ignoradas."  
+> "Você quer processar **apenas reuniões criadas por pessoas específicas**? Se sim, liste os nomes completos dos organizadores cujas reuniões devem ser resumidas. Reuniões de qualquer outro anfitrião serão ignoradas (exceto se o título bater com `allowed_title_contains`)."  
 > *(deixe em branco para não restringir por organizador)*
 
 Salva em: `filters.allowed_organizers` (lista de nomes — correspondência parcial, sem distinção de maiúsculas)
 
-#### Pergunta 3 — Recorrentes de outros organizadores
+#### Pergunta 3 — Prefixos/grupos de equipes autorizados
 
-> Só pergunte isso se `allowed_organizers` **não** foi preenchido.  
+> Só pergunte se `allowed_organizers` foi preenchido.  
+> "Existem grupos ou equipes cujas reuniões devem ser processadas **independentemente do organizador**? Se sim, liste os prefixos ou termos presentes no título dessas reuniões."  
+> *(ex: `[DEV] B2B`, `[DEV] Projetos` — qualquer reunião cujo título contenha esses termos será processada mesmo que o organizador não esteja na lista)*
+
+Salva em: `filters.allowed_title_contains` (lista de strings — correspondência parcial, case-insensitive)
+
+#### Pergunta 4 — Recorrentes de outros organizadores
+
+> Só pergunte se `allowed_organizers` **e** `allowed_title_contains` **não** foram preenchidos.  
 > "Reuniões **recorrentes** onde você **não é o organizador** devem ser ignoradas?"  
 > *(sim/não)*
 
 Salva em: `filters.ignore_recurring_not_organizer` (true/false)
 
-#### Pergunta 4 — Times ou grupos com rotina irrelevante
+#### Pergunta 5 — Times ou grupos com rotina irrelevante
 
 > "Tem algum **time ou grupo** cujas reuniões de rotina (daily, review, planning, refinamento) você **não quer resumir**, mesmo que organizadas por alguém da lista de anfitriões?"  
 > Para cada time informado, pergunte quais tipos de reunião ignorar.  
@@ -67,7 +75,9 @@ Para cada evento, verifique na ordem abaixo e pare na primeira regra que bater:
 1. filters.mode == "all"?                                              → processar
 2. Título contém algum item de filters.ignore_title_contains?          → ignorar
 3. allowed_organizers está preenchido
-   E nome do organizador NÃO contém nenhum item da lista?              → ignorar
+   E nome do organizador NÃO contém nenhum item da lista
+   E (allowed_title_contains está vazio
+      OU título NÃO contém nenhum item de allowed_title_contains)?     → ignorar
 4. allowed_organizers vazio E ignore_recurring_not_organizer: true
    E recurrence != null  E isOrganizer: false?                         → ignorar
 5. Para cada padrão em filters.ignore_team_patterns:
@@ -76,7 +86,7 @@ Para cada evento, verifique na ordem abaixo e pare na primeira regra que bater:
 6. Qualquer outro caso                                                 → processar
 ```
 
-**Como identificar o organizador do evento:** use o campo `organizer.emailAddress.name` ou `organizer.emailAddress.address` retornado pela API do calendário. A comparação com `allowed_organizers` é feita por `contains` (parcial, case-insensitive) — assim "Giovana Rodrigues" bate em "Giovana Rodrigues (Thunders)" ou variações com acento.
+**Como identificar o organizador do evento:** use o campo `organizer.emailAddress.name` ou `organizer.emailAddress.address` retornado pela API do calendário. A comparação com `allowed_organizers` e `allowed_title_contains` é feita por `contains` (parcial, case-insensitive) — assim "Giovana Rodrigues" bate em "Giovana Rodrigues (Thunders)", e `[DEV] B2B` bate em `[DEV] B2B - Daily Sprint 10`.
 
 > **Nota:** se `skill_config.json` já existir com a chave `filters` configurada, pule o wizard e aplique os filtros diretamente.
 

@@ -5,8 +5,16 @@
   "teams_channel": "Nome do Canal",
   "filters": {
     "mode": "custom",
-    "ignore_title_contains": [],
+    "ignore_title_contains": [
+      "All Hands",
+      "Treinamento",
+      "Training"
+    ],
     "allowed_organizers": [],
+    "allowed_title_contains": [
+      "_comment: prefixos/grupos cujas reuniões são processadas independente do organizador",
+      "[DEV] Nome do Time"
+    ],
     "ignore_recurring_not_organizer": false,
     "ignore_team_patterns": [
       {

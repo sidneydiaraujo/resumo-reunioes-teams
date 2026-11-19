@@ -82,12 +82,6 @@ Na primeira execução, a skill pergunta como você quer filtrar as reuniões e 
 
 Consulte `skill_config.example.json` para ver a estrutura completa de configuração.
 
-### Configuração pronta para uso
-
-Se você trabalha em um contexto similar ao de uma empresa de software (Scrum Master em empresa com múltiplos times), existe uma configuração personalizada pronta:
-
-> **[resumo-reunioes-teams-config](https://github.com/sidneydiaraujo/resumo-reunioes-teams-config)** — filtros por anfitrião autorizado, cerimônias ignoradas por time e títulos específicos.
-
 ---
 
 ## Estrutura do projeto

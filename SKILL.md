@@ -86,7 +86,7 @@ Para cada evento, verifique na ordem abaixo e pare na primeira regra que bater:
 6. Qualquer outro caso                                                 → processar
 ```
 
-**Como identificar o organizador do evento:** use o campo `organizer.emailAddress.name` ou `organizer.emailAddress.address` retornado pela API do calendário. A comparação com `allowed_organizers` e `allowed_title_contains` é feita por `contains` (parcial, case-insensitive) — assim "Giovana Rodrigues" bate em "Giovana Rodrigues (Empresa)", e `[DEV] B2B` bate em `[DEV] B2B - Daily Sprint 10`.
+**Como identificar o organizador do evento:** use o campo `organizer.emailAddress.name` ou `organizer.emailAddress.address` retornado pela API do calendário. A comparação com `allowed_organizers` e `allowed_title_contains` é feita por `contains` (parcial, case-insensitive) — assim "Maria Souza" bate em "Maria Souza (Empresa)", e `[DEV] B2B` bate em `[DEV] B2B - Daily Sprint 10`.
 
 > **Nota:** se `skill_config.json` já existir com a chave `filters` configurada, pule o wizard e aplique os filtros diretamente.
 
